@@ -18,9 +18,30 @@ contract blogContract {
         uint upVotes; // user total upvotes
     }
 
+    // Mapping to track the entry leaderboard
+    mapping (uint => ranking) entryLeaderBoard;
+
+    // Mapping to track the upvotes leaderboard
+    mapping (uint => ranking) upvotesLeaderBoard;
+
+    // Mapping to track the headline leaderboard
+    mapping (uint => ranking) headlineLeaderBoard;
+
+    // the ranking struct
+    struct ramking {
+        address user;
+        uint score;
+    }
+
     // Mapping of an address to an array posts/entries
     // can be use to retrieve a users posts/entries
     mapping (address => Post[]) userPosts;
+
+    // mapping for blacklist
+    mapping (address => bool) blackList;
+
+    // mapping of users to their last post time
+    mapping (address => uint) lastPostTime;
 
     // Mapping of all postcounts/ids to post
     // to store all posts
@@ -74,6 +95,7 @@ contract blogContract {
         owner = msg.sender;
         silverLimit = _silverLimit;
         goldLimit = _goldLimit;
+
     }
 
     // function to sign a user up
@@ -86,6 +108,8 @@ contract blogContract {
     function postEntry(string memory entryHash, string memory topic) public {
         uint category = userCategory[msg.sender];
         require(category == 3, "You are not a gold member");
+        require(blackList[msg.sender] != true, "You have blackListed");
+        require(block.timestamp > lastPostTime[msg.sender] + 1 hours);
 
         _ids.increment();
         Post memory p;
@@ -98,6 +122,8 @@ contract blogContract {
         userPosts[msg.sender].push(p);
         AllPosts[id] = p;
         postsCount[msg.sender] = postsCount[msg.sender] + 1;
+
+        lastPostTime[msg.sender] = block.timestamp;
     }
 
     // function to return a user category
@@ -115,6 +141,7 @@ contract blogContract {
     // function to create new topic, can only be done by a gold user
     function createTopic(string memory topic) public {
         require(userCategory[msg.sender] == 3, "You have to be gold user to user to add topics");
+        require(blackList[msg.sender] != true, "You have blackListed");
         topics.push(topic);
     }
 
@@ -125,29 +152,29 @@ contract blogContract {
 
     // function to make a comment on a post
     function comment(uint id, string memory commentHash) public {
+        require(blackList[msg.sender] != true, "You have blackListed");
+        require(block.timestamp > lastPostTime[msg.sender] + 1 hours);
         Comment memory c;
         c.author = msg.sender;
         c.commentHash = commentHash;
         c.upVotes = 0;
 
         comments[id].push(c);
+        lastPostTime[msg.sender] = block.timestamp;
     }
 
     // function to up vote a post
     function upvotePost(uint id) public {
-        //TODO
-        //get the post struct from the all posts and individual post mapping
+        require(blackList[msg.sender] != true, "You have blackListed");
         AllPosts[id].upVotes = AllPosts[id].upVotes + 1;
-        //increase the upvotes by 1
+        
     }
 
     // function to up vote a comment
     function upvoteComment(uint id, uint cId) public {
-        //TODO
-        //get the comment struct from comment mapping with both ids for post and comment
-        Comment[] memory _comments = comments[id];
+        require(blackList[msg.sender] != true, "You have blackListed");
+       Comment[] memory _comments = comments[id];
         Comment memory comment = _comments[cId];
-        //increase the upvotes by 1
         comment.upVotes = comment.upVotes + 1;
     }
 
@@ -158,6 +185,7 @@ contract blogContract {
 
         require(cat == 1, "You need to be a bronze holder");
         require(votes >= silverLimit, "You have reached the right threshold for get a silver NFT");
+        require(blackList[msg.sender] != true, "You have blackListed");
 
         silverWaitList[msg.sender] = true;
         userCategory[msg.sender] = cat + 1;
@@ -170,6 +198,7 @@ contract blogContract {
 
         require(cat == 2, "You need to be a bronze holder");
         require(votes >= goldLimit, "You have reached the right threshold for get a silver NFT");
+        require(blackList[msg.sender] != true, "You have blackListed");
 
         goldWaitList[msg.sender] = true;
         userCategory[msg.sender] = cat + 1;
@@ -182,4 +211,21 @@ contract blogContract {
     function updateGL() external {
         goldWaitList[msg.sender] = false;
     }
+
+    // TODO
+    // FUNCTION TO ADD A USER TO BLACKLIST
+    function addToBlackList(address user) public {
+        require(msg.sender == owner, "You are permitted to perform this function");
+        blackList[user] = true;
+    }
+    // FUNCTION TO REMOVE A USER FROM BLACKLIST
+        function addToBlackList(address user) public {
+        require(msg.sender == owner, "You are permitted to perform this function");
+        blackList[user] = false;
+    }
+    // IMPLEMENTATION OF FEES FOR POSTING
+
+    // IMPLEMENTATION OF LEADERBOARD (WEEKLY AND ALLTIME)
+
+    // IMPLEMENTING REVENUE DISTRIBUTION
 }
