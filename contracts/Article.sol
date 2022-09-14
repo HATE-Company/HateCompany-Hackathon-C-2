@@ -27,11 +27,20 @@ contract blogContract {
     // Mapping to track the headline leaderboard
     mapping (uint => ranking) headlineLeaderBoard;
 
+    // the number of users
+    uint usersLength = 0;
+
     // the ranking struct
-    struct ramking {
+    struct ranking {
         address user;
         uint score;
     }
+
+    // preferably using a chainlink price feed to get the price of 0.666 usdc as matic
+    // fee for making a comment
+    uint commentFee;
+    // fee for making a headline
+    uint headlineFee;
 
     // Mapping of an address to an array posts/entries
     // can be use to retrieve a users posts/entries
@@ -91,10 +100,12 @@ contract blogContract {
     uint public silverLimit; // the number of posts needed to get to silver rank
     uint public goldLimit; // the number of posts needed to get to gold rank
 
-    constructor(uint _silverLimit, uint _goldLimit) {
+    constructor(uint _silverLimit, uint _goldLimit, uint _commentFee, uint _headlineFee) {
         owner = msg.sender;
         silverLimit = _silverLimit;
         goldLimit = _goldLimit;
+        commentFee = _commentFee;
+        headlineFee = _headlineFee;
 
     }
 
@@ -102,11 +113,15 @@ contract blogContract {
     function signUp(string memory profileHash) public {
         profile[msg.sender].profileHash = profileHash; // the profile object has to be stored on IPFS already and the hash returned
         userCategory[msg.sender] = 1; // 1 to denote bronze
+        usersLength = usersLength + 1; // updating the numbers of users
+        entryLeaderBoard[usersLength].user = msg.sender;
+        entryLeaderBoard[usersLength].score = 0;
     }
 
     // function to make an entry/post
     function postEntry(string memory entryHash, string memory topic) public {
         uint category = userCategory[msg.sender];
+        require(msg.value == headlineFee);
         require(category == 3, "You are not a gold member");
         require(blackList[msg.sender] != true, "You have blackListed");
         require(block.timestamp > lastPostTime[msg.sender] + 1 hours);
@@ -124,6 +139,32 @@ contract blogContract {
         postsCount[msg.sender] = postsCount[msg.sender] + 1;
 
         lastPostTime[msg.sender] = block.timestamp;
+
+    for (uint i=0; i<usersLength; i++) {
+      // get the score of the user, update the score of the user
+      if (entryLeaderBoard[i].user == msg.sender) {
+        uint score = entryLeaderBoard[i].score + 1;
+        // find where to insert the new score
+        if (entryLeaderBoard[i].score < score) {
+
+        // shift leaderboard
+        ranking memory currentUser = entryLeaderBoard[i];
+        for (uint j=i+1; j<usersLength+1; j++) {
+          ranking memory nextUser = entryLeaderBoard[j];
+          entryLeaderBoard[j] = currentUser;
+          currentUser = nextUser;
+        }
+
+        // insert
+        entryLeaderBoard[i] = ranking({
+          user: msg.sender,
+          score: score
+        });
+
+      }
+      }
+
+    }
     }
 
     // function to return a user category
@@ -152,6 +193,7 @@ contract blogContract {
 
     // function to make a comment on a post
     function comment(uint id, string memory commentHash) public {
+        require(msg.value == commentFee);
         require(blackList[msg.sender] != true, "You have blackListed");
         require(block.timestamp > lastPostTime[msg.sender] + 1 hours);
         Comment memory c;
@@ -219,7 +261,7 @@ contract blogContract {
         blackList[user] = true;
     }
     // FUNCTION TO REMOVE A USER FROM BLACKLIST
-        function addToBlackList(address user) public {
+        function removeFromBlackList(address user) public {
         require(msg.sender == owner, "You are permitted to perform this function");
         blackList[user] = false;
     }

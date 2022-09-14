@@ -2,10 +2,11 @@ Done
 1. Setup of project
 2. functions for sign up, making entries and headlines
 3. function for entering the silver and gold waitlists
+4. implementation of Blacklist function
+5. implementation of countdown to limit spamming
+6. implementation of fees in posting entries and headlines (yet to implement chainlink price feed)
+7. implementation of leader board for entries
 
 TODO
-1. implementation of Blacklist function
-2. implementation of countdown to limit spamming
-3. implementation of fees in posting entries and headlines
-4. implementation of leader board
+4. implementation of leader board for headlines and upvotes
 5. implementation of revenue distribution
