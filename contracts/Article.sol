@@ -27,6 +27,9 @@ contract blogContract {
     // Mapping to track the headline leaderboard
     mapping (uint => ranking) headlineLeaderBoard;
 
+    // Mapping of a user to the amount of karma that can be claimed
+    mapping (address => uint) claimableKarma;
+
     // the number of users
     uint usersLength = 0;
 
@@ -116,10 +119,17 @@ contract blogContract {
         usersLength = usersLength + 1; // updating the numbers of users
         entryLeaderBoard[usersLength].user = msg.sender;
         entryLeaderBoard[usersLength].score = 0;
+
+        upvotesLeaderBoard[usersLength].user = msg.sender;
+        upvotesLeaderBoard[usersLength].score = 0;
+
+        headlineLeaderBoard[usersLength].user = msg.sender;
+        headlineLeaderBoard[usersLength].score = 0;
+        claimableKarma[msg.sender] = 0;
     }
 
     // function to make an entry/post
-    function postEntry(string memory entryHash, string memory topic) public {
+    function postHeadline(string memory entryHash, string memory topic) public {
         uint category = userCategory[msg.sender];
         require(msg.value == headlineFee);
         require(category == 3, "You are not a gold member");
@@ -142,21 +152,21 @@ contract blogContract {
 
     for (uint i=0; i<usersLength; i++) {
       // get the score of the user, update the score of the user
-      if (entryLeaderBoard[i].user == msg.sender) {
-        uint score = entryLeaderBoard[i].score + 1;
+      if (headlineLeaderBoard[i].user == msg.sender) {
+        uint score = headlineLeaderBoard[i].score + 1;
         // find where to insert the new score
-        if (entryLeaderBoard[i].score < score) {
+        if (headlineLeaderBoard[i].score < score) {
 
         // shift leaderboard
-        ranking memory currentUser = entryLeaderBoard[i];
+        ranking memory currentUser = headlineLeaderBoard[i];
         for (uint j=i+1; j<usersLength+1; j++) {
-          ranking memory nextUser = entryLeaderBoard[j];
-          entryLeaderBoard[j] = currentUser;
+          ranking memory nextUser = headlineLeaderBoard[j];
+          headlineLeaderBoard[j] = currentUser;
           currentUser = nextUser;
         }
 
         // insert
-        entryLeaderBoard[i] = ranking({
+        headlineLeaderBoard[i] = ranking({
           user: msg.sender,
           score: score
         });
@@ -192,7 +202,7 @@ contract blogContract {
     }
 
     // function to make a comment on a post
-    function comment(uint id, string memory commentHash) public {
+    function postEntry(uint id, string memory commentHash) public {
         require(msg.value == commentFee);
         require(blackList[msg.sender] != true, "You have blackListed");
         require(block.timestamp > lastPostTime[msg.sender] + 1 hours);
@@ -203,13 +213,68 @@ contract blogContract {
 
         comments[id].push(c);
         lastPostTime[msg.sender] = block.timestamp;
+
+        for (uint i=0; i<usersLength; i++) {
+        // get the score of the user, update the score of the user
+        if (entryLeaderBoard[i].user == msg.sender) {
+            uint score = entryLeaderBoard[i].score + 1;
+            // find where to insert the new score
+            if (entryLeaderBoard[i].score < score) {
+
+            // shift leaderboard
+            ranking memory currentUser = entryLeaderBoard[i];
+            for (uint j=i+1; j<usersLength+1; j++) {
+            ranking memory nextUser = entryLeaderBoard[j];
+            entryLeaderBoard[j] = currentUser;
+            currentUser = nextUser;
+            }
+
+            // insert
+            entryLeaderBoard[i] = ranking({
+            user: msg.sender,
+            score: score
+            });
+
+        }
+        }
+
+        }
     }
 
     // function to up vote a post
     function upvotePost(uint id) public {
         require(blackList[msg.sender] != true, "You have blackListed");
         AllPosts[id].upVotes = AllPosts[id].upVotes + 1;
+
+        address postAuthor = AllPosts[id].author;
+        profile[postAuthor].upVotes = profile[postAuthor].upVotes + 1;
+        claimableKarma[postAuthor] = claimableKarma[postAuthor] + 1;
         
+        for (uint i=0; i<usersLength; i++) {
+        // get the score of the user, update the score of the user
+        if (upvotesLeaderBoard[i].user == msg.sender) {
+            uint score = upvotesLeaderBoard[i].score + 1;
+            // find where to insert the new score
+            if (upvotesLeaderBoard[i].score < score) {
+
+            // shift leaderboard
+            ranking memory currentUser = upvotesLeaderBoard[i];
+            for (uint j=i+1; j<usersLength+1; j++) {
+            ranking memory nextUser = upvotesLeaderBoard[j];
+            upvotesLeaderBoard[j] = currentUser;
+            currentUser = nextUser;
+            }
+
+            // insert
+            upvotesLeaderBoard[i] = ranking({
+            user: msg.sender,
+            score: score
+            });
+
+        }
+        }
+
+        }
     }
 
     // function to up vote a comment
@@ -218,6 +283,37 @@ contract blogContract {
        Comment[] memory _comments = comments[id];
         Comment memory comment = _comments[cId];
         comment.upVotes = comment.upVotes + 1;
+
+        address postAuthor = comment.author;
+        profile[postAuthor].upVotes = profile[postAuthor].upVotes + 1;
+        claimableKarma[postAuthor] = claimableKarma[postAuthor] + 1;
+
+        for (uint i=0; i<usersLength; i++) {
+        // get the score of the user, update the score of the user
+        if (upvotesLeaderBoard[i].user == msg.sender) {
+            uint score = upvotesLeaderBoard[i].score + 1;
+            // find where to insert the new score
+            if (upvotesLeaderBoard[i].score < score) {
+
+            // shift leaderboard
+            ranking memory currentUser = upvotesLeaderBoard[i];
+            for (uint j=i+1; j<usersLength+1; j++) {
+            ranking memory nextUser = upvotesLeaderBoard[j];
+            upvotesLeaderBoard[j] = currentUser;
+            currentUser = nextUser;
+            }
+
+            // insert
+            upvotesLeaderBoard[i] = ranking({
+            user: msg.sender,
+            score: score
+            });
+
+        }
+        }
+
+        }
+
     }
 
     // function to enter silver waitlist
@@ -265,9 +361,11 @@ contract blogContract {
         require(msg.sender == owner, "You are permitted to perform this function");
         blackList[user] = false;
     }
-    // IMPLEMENTATION OF FEES FOR POSTING
-
-    // IMPLEMENTATION OF LEADERBOARD (WEEKLY AND ALLTIME)
 
     // IMPLEMENTING REVENUE DISTRIBUTION
+
+    // function to redeem karma
+    function redeemKarma()  returns () {
+    
+    } 
 }

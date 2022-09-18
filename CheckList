@@ -5,8 +5,7 @@ Done
 4. implementation of Blacklist function
 5. implementation of countdown to limit spamming
 6. implementation of fees in posting entries and headlines (yet to implement chainlink price feed)
-7. implementation of leader board for entries
+7. implementation of leader board for entries, headlines and upvotes
 
 TODO
-4. implementation of leader board for headlines and upvotes
 5. implementation of revenue distribution
