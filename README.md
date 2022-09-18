@@ -1,3 +1,3 @@
 # HateCompany-Hackathon-C-2
 
-Moralis Web3 Hackathon C | NatX#9880
+Smart Contracts | NatX#9880
