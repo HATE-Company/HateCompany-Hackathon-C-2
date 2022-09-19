@@ -6,6 +6,5 @@ Done
 5. implementation of countdown to limit spamming
 6. implementation of fees in posting entries and headlines (yet to implement chainlink price feed)
 7. implementation of leader board for entries, headlines and upvotes
+8. implementation of revenue distribution
 
-TODO
-5. implementation of revenue distribution

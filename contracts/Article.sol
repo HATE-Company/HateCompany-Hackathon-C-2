@@ -18,17 +18,23 @@ contract blogContract {
         uint upVotes; // user total upvotes
     }
 
+    // the deployment time
+    uint deployTime;
+
+    // the price feed to getthe price of matic
+    AggregatorV3Interface internal priceFeed;
+
     // Mapping to track the entry leaderboard
-    mapping (uint => ranking) entryLeaderBoard;
+    mapping (uint => mapping (uint => ranking)) entryLeaderBoard;
 
     // Mapping to track the upvotes leaderboard
-    mapping (uint => ranking) upvotesLeaderBoard;
+    mapping (uint => mapping (uint => ranking)) upvotesLeaderBoard;
 
     // Mapping to track the headline leaderboard
-    mapping (uint => ranking) headlineLeaderBoard;
+    mapping (uint => mapping (uint => ranking)) headlineLeaderBoard;
 
-    // Mapping of a user to the amount of karma that can be claimed
-    mapping (address => uint) claimableKarma;
+    // Mapping to store the revenue in a week
+    mapping (uint => uint) weekrevenue;
 
     // the number of users
     uint usersLength = 0;
@@ -38,12 +44,6 @@ contract blogContract {
         address user;
         uint score;
     }
-
-    // preferably using a chainlink price feed to get the price of 0.666 usdc as matic
-    // fee for making a comment
-    uint commentFee;
-    // fee for making a headline
-    uint headlineFee;
 
     // Mapping of an address to an array posts/entries
     // can be use to retrieve a users posts/entries
@@ -103,13 +103,24 @@ contract blogContract {
     uint public silverLimit; // the number of posts needed to get to silver rank
     uint public goldLimit; // the number of posts needed to get to gold rank
 
-    constructor(uint _silverLimit, uint _goldLimit, uint _commentFee, uint _headlineFee) {
+    constructor(uint _silverLimit, uint _goldLimit) {
         owner = msg.sender;
         silverLimit = _silverLimit;
         goldLimit = _goldLimit;
-        commentFee = _commentFee;
-        headlineFee = _headlineFee;
+        deployTime = block.timestamp;
+        priceFeed = AggregatorV3Interface(0x572dDec9087154dC5dfBB1546Bb62713147e0Ab0);
 
+    }
+
+    function getMaticPrice() public view returns (int) {
+        (
+      uint80 roundId,
+      int256 price,
+      uint256 startedAt,
+      uint256 updatedAt,
+      uint80 answeredInRound
+        ) = priceFeed.latestRoundData();
+      return price / 1e8;
     }
 
     // function to sign a user up
@@ -117,19 +128,15 @@ contract blogContract {
         profile[msg.sender].profileHash = profileHash; // the profile object has to be stored on IPFS already and the hash returned
         userCategory[msg.sender] = 1; // 1 to denote bronze
         usersLength = usersLength + 1; // updating the numbers of users
-        entryLeaderBoard[usersLength].user = msg.sender;
-        entryLeaderBoard[usersLength].score = 0;
 
-        upvotesLeaderBoard[usersLength].user = msg.sender;
-        upvotesLeaderBoard[usersLength].score = 0;
-
-        headlineLeaderBoard[usersLength].user = msg.sender;
-        headlineLeaderBoard[usersLength].score = 0;
-        claimableKarma[msg.sender] = 0;
     }
 
     // function to make an entry/post
-    function postHeadline(string memory entryHash, string memory topic) public {
+    function postHeadline(string memory entryHash, string memory topic) public payable {
+        int _maticPrice = getMaticPrice();
+        uint maticprice = uint(_maticPrice);
+        uint headlineFee = (666 * (10 ** 15)) / maticprice;
+
         uint category = userCategory[msg.sender];
         require(msg.value == headlineFee);
         require(category == 3, "You are not a gold member");
@@ -149,24 +156,26 @@ contract blogContract {
         postsCount[msg.sender] = postsCount[msg.sender] + 1;
 
         lastPostTime[msg.sender] = block.timestamp;
+        uint week = getWeek();
+        weekrevenue[week] = weekrevenue[week] + msg.value;
 
     for (uint i=0; i<usersLength; i++) {
       // get the score of the user, update the score of the user
-      if (headlineLeaderBoard[i].user == msg.sender) {
-        uint score = headlineLeaderBoard[i].score + 1;
+      if (headlineLeaderBoard[week][i].user == msg.sender) {
+        uint score = headlineLeaderBoard[week][i].score + 1;
         // find where to insert the new score
-        if (headlineLeaderBoard[i].score < score) {
+        if (headlineLeaderBoard[week][i].score < score) {
 
         // shift leaderboard
-        ranking memory currentUser = headlineLeaderBoard[i];
+        ranking memory currentUser = headlineLeaderBoard[week][i];
         for (uint j=i+1; j<usersLength+1; j++) {
-          ranking memory nextUser = headlineLeaderBoard[j];
-          headlineLeaderBoard[j] = currentUser;
+          ranking memory nextUser = headlineLeaderBoard[week][j];
+          headlineLeaderBoard[week][j] = currentUser;
           currentUser = nextUser;
         }
 
         // insert
-        headlineLeaderBoard[i] = ranking({
+        headlineLeaderBoard[week][i] = ranking({
           user: msg.sender,
           score: score
         });
@@ -202,7 +211,11 @@ contract blogContract {
     }
 
     // function to make a comment on a post
-    function postEntry(uint id, string memory commentHash) public {
+    function postEntry(uint id, string memory commentHash) public payable {
+        int _maticPrice = getMaticPrice();
+        uint maticprice = uint(_maticPrice);
+        uint commentFee = (666 * (10 ** 15)) / maticprice;
+
         require(msg.value == commentFee);
         require(blackList[msg.sender] != true, "You have blackListed");
         require(block.timestamp > lastPostTime[msg.sender] + 1 hours);
@@ -213,24 +226,26 @@ contract blogContract {
 
         comments[id].push(c);
         lastPostTime[msg.sender] = block.timestamp;
+        uint week = getWeek();
+        weekrevenue[week] = weekrevenue[week] + msg.value;
 
         for (uint i=0; i<usersLength; i++) {
         // get the score of the user, update the score of the user
-        if (entryLeaderBoard[i].user == msg.sender) {
-            uint score = entryLeaderBoard[i].score + 1;
+        if (entryLeaderBoard[week][i].user == msg.sender) {
+            uint score = entryLeaderBoard[week][i].score + 1;
             // find where to insert the new score
-            if (entryLeaderBoard[i].score < score) {
+            if (entryLeaderBoard[week][i].score < score) {
 
             // shift leaderboard
-            ranking memory currentUser = entryLeaderBoard[i];
+            ranking memory currentUser = entryLeaderBoard[week][i];
             for (uint j=i+1; j<usersLength+1; j++) {
-            ranking memory nextUser = entryLeaderBoard[j];
-            entryLeaderBoard[j] = currentUser;
+            ranking memory nextUser = entryLeaderBoard[week][j];
+            entryLeaderBoard[week][j] = currentUser;
             currentUser = nextUser;
             }
 
             // insert
-            entryLeaderBoard[i] = ranking({
+            entryLeaderBoard[week][i] = ranking({
             user: msg.sender,
             score: score
             });
@@ -248,25 +263,25 @@ contract blogContract {
 
         address postAuthor = AllPosts[id].author;
         profile[postAuthor].upVotes = profile[postAuthor].upVotes + 1;
-        claimableKarma[postAuthor] = claimableKarma[postAuthor] + 1;
-        
+        uint week = getWeek();
+
         for (uint i=0; i<usersLength; i++) {
         // get the score of the user, update the score of the user
-        if (upvotesLeaderBoard[i].user == msg.sender) {
-            uint score = upvotesLeaderBoard[i].score + 1;
+        if (upvotesLeaderBoard[week][i].user == msg.sender) {
+            uint score = upvotesLeaderBoard[week][i].score + 1;
             // find where to insert the new score
-            if (upvotesLeaderBoard[i].score < score) {
+            if (upvotesLeaderBoard[week][i].score < score) {
 
             // shift leaderboard
-            ranking memory currentUser = upvotesLeaderBoard[i];
+            ranking memory currentUser = upvotesLeaderBoard[week][i];
             for (uint j=i+1; j<usersLength+1; j++) {
-            ranking memory nextUser = upvotesLeaderBoard[j];
-            upvotesLeaderBoard[j] = currentUser;
+            ranking memory nextUser = upvotesLeaderBoard[week][j];
+            upvotesLeaderBoard[week][j] = currentUser;
             currentUser = nextUser;
             }
 
             // insert
-            upvotesLeaderBoard[i] = ranking({
+            upvotesLeaderBoard[week][i] = ranking({
             user: msg.sender,
             score: score
             });
@@ -286,25 +301,25 @@ contract blogContract {
 
         address postAuthor = comment.author;
         profile[postAuthor].upVotes = profile[postAuthor].upVotes + 1;
-        claimableKarma[postAuthor] = claimableKarma[postAuthor] + 1;
+        uint week = getWeek();
 
         for (uint i=0; i<usersLength; i++) {
         // get the score of the user, update the score of the user
-        if (upvotesLeaderBoard[i].user == msg.sender) {
-            uint score = upvotesLeaderBoard[i].score + 1;
+        if (upvotesLeaderBoard[week][i].user == msg.sender) {
+            uint score = upvotesLeaderBoard[week][i].score + 1;
             // find where to insert the new score
-            if (upvotesLeaderBoard[i].score < score) {
+            if (upvotesLeaderBoard[week][i].score < score) {
 
             // shift leaderboard
-            ranking memory currentUser = upvotesLeaderBoard[i];
+            ranking memory currentUser = upvotesLeaderBoard[week][i];
             for (uint j=i+1; j<usersLength+1; j++) {
-            ranking memory nextUser = upvotesLeaderBoard[j];
-            upvotesLeaderBoard[j] = currentUser;
+            ranking memory nextUser = upvotesLeaderBoard[week][j];
+            upvotesLeaderBoard[week][j] = currentUser;
             currentUser = nextUser;
             }
 
             // insert
-            upvotesLeaderBoard[i] = ranking({
+            upvotesLeaderBoard[week][i] = ranking({
             user: msg.sender,
             score: score
             });
@@ -362,10 +377,445 @@ contract blogContract {
         blackList[user] = false;
     }
 
+    // function to get the week of the post
+    function getWeek() internal view returns (uint week) {
+        week = (block.timestamp / deployTime) - (block.timestamp % deployTime);
+    }
+
     // IMPLEMENTING REVENUE DISTRIBUTION
 
     // function to redeem karma
-    function redeemKarma()  returns () {
-    
-    } 
+    function redeemUpvotesRevenue(uint week) public {
+        int _maticPrice = getMaticPrice();
+        uint maticprice = uint(_maticPrice);
+        uint revenue = weekrevenue[week];
+
+        // get the position of the caller on the leaderboard
+        address first = upvotesLeaderBoard[week][1].user;
+        address second = upvotesLeaderBoard[week][2].user;
+        address third = upvotesLeaderBoard[week][3].user;
+        address fourth = upvotesLeaderBoard[week][4].user;
+        address fifth = upvotesLeaderBoard[week][5].user;
+
+        bool sixthtotenth = isSixthUpvotes(week);
+        bool eleventhtotwentieth = isTenthUpvotes(week);
+
+        uint firstRev = (666 * (10 ** 18)) / maticprice;
+        uint secondRev = (1665 * (10 ** 18)) / maticprice;
+        uint thirdRev = (3330 * (10 ** 18)) / maticprice;
+        uint fourthRev = (6660 * (10 ** 18)) / maticprice;
+
+
+
+        if (revenue > firstRev && revenue < secondRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((50 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((30 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((20 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((15 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((5 * (10 ** 18)) / maticprice);
+            }
+
+        }
+        else if(revenue > secondRev && revenue < thirdRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((100 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((60 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((30 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((20 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((5 * (10 ** 18)) / maticprice);
+            }
+        }
+        else if (revenue > thirdRev && revenue < fourthRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((250 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((125 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((80 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((60 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((25 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+        }
+        else if (revenue > fourthRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((500 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((250 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((150 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((100 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((70 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((25 * (10 ** 18)) / maticprice);
+            }
+        }
+
+    }
+
+    // function to claim entries revenue
+        function redeemEntriesRevenue(uint week) public {
+        int _maticPrice = getMaticPrice();
+        uint maticprice = uint(_maticPrice);
+        uint revenue = weekrevenue[week];
+
+        // get the position of the caller on the leaderboard
+        address first = entryLeaderBoard[week][1].user;
+        address second = entryLeaderBoard[week][2].user;
+        address third = entryLeaderBoard[week][3].user;
+        address fourth = entryLeaderBoard[week][4].user;
+        address fifth = entryLeaderBoard[week][5].user;
+
+        bool sixthtotenth = isSixthUpvotes(week);
+        bool eleventhtotwentieth = isTenthUpvotes(week);
+
+        uint firstRev = (666 * (10 ** 18)) / maticprice;
+        uint secondRev = (1665 * (10 ** 18)) / maticprice;
+        uint thirdRev = (3330 * (10 ** 18)) / maticprice;
+        uint fourthRev = (6660 * (10 ** 18)) / maticprice;
+
+
+
+        if (revenue > firstRev && revenue < secondRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((50 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((30 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((20 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((15 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((5 * (10 ** 18)) / maticprice);
+            }
+
+        }
+        else if(revenue > secondRev && revenue < thirdRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((100 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((60 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((30 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((20 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((5 * (10 ** 18)) / maticprice);
+            }
+        }
+        else if (revenue > thirdRev && revenue < fourthRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((250 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((125 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((80 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((60 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((25 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+        }
+        else if (revenue > fourthRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((500 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((250 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((150 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((100 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((70 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((25 * (10 ** 18)) / maticprice);
+            }
+        }
+
+    }
+
+    // function to claim headlines revenue
+    function redeemHeadlinesRevenue(uint week) public {
+        uint category = userCategory[msg.sender];
+        require(category == 3, "You are not a gold member");
+        int _maticPrice = getMaticPrice();
+        uint maticprice = uint(_maticPrice);
+        uint revenue = weekrevenue[week];
+
+        // get the position of the caller on the leaderboard
+        address first = entryLeaderBoard[week][1].user;
+        address second = entryLeaderBoard[week][2].user;
+        address third = entryLeaderBoard[week][3].user;
+        address fourth = entryLeaderBoard[week][4].user;
+        address fifth = entryLeaderBoard[week][5].user;
+
+        bool sixthtotenth = isSixthUpvotes(week);
+        bool eleventhtotwentieth = isTenthUpvotes(week);
+
+        uint firstRev = (666 * (10 ** 18)) / maticprice;
+        uint secondRev = (1665 * (10 ** 18)) / maticprice;
+        uint thirdRev = (3330 * (10 ** 18)) / maticprice;
+        uint fourthRev = (6660 * (10 ** 18)) / maticprice;
+
+
+
+        if (revenue > firstRev && revenue < secondRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((50 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((30 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((20 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((15 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((5 * (10 ** 18)) / maticprice);
+            }
+
+        }
+        else if(revenue > secondRev && revenue < thirdRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((100 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((60 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((30 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((20 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((5 * (10 ** 18)) / maticprice);
+            }
+        }
+        else if (revenue > thirdRev && revenue < fourthRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((250 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((125 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((80 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((60 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((25 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((10 * (10 ** 18)) / maticprice);
+            }
+        }
+        else if (revenue > fourthRev) {
+            if (first == msg.sender) {
+                payable(msg.sender).transfer((500 * (10 ** 18)) / maticprice);
+            } else if (second == msg.sender) {
+                payable(msg.sender).transfer((250 * (10 ** 18)) / maticprice);
+            }
+            else if (third == msg.sender) {
+                payable(msg.sender).transfer((150 * (10 ** 18)) / maticprice);
+            }
+            else if (fourth == msg.sender) {
+                payable(msg.sender).transfer((100 * (10 ** 18)) / maticprice);
+            }
+            else if (fifth == msg.sender) {
+                payable(msg.sender).transfer((70 * (10 ** 18)) / maticprice);
+            }
+            else if (sixthtotenth == true) {
+                payable(msg.sender).transfer((40 * (10 ** 18)) / maticprice);
+            }
+            else if (eleventhtotwentieth == true) {
+                payable(msg.sender).transfer((25 * (10 ** 18)) / maticprice);
+            }
+        }
+
+    }
+
+    // function to know the position of the caller 
+    function isSixthUpvotes(uint week) internal view returns(bool isSixth) {
+        for (uint i = 6; i < 11; i++) {
+            if(upvotesLeaderBoard[week][i].user == msg.sender) {
+                isSixth = true;
+            }
+            else {
+                isSixth = false;
+            }
+        }
+    }
+
+    function isTenthUpvotes(uint week) internal view returns(bool isSixth) {
+        for (uint i = 11; i < 21; i++) {
+            if(upvotesLeaderBoard[week][i].user == msg.sender) {
+                isSixth = true;
+            }
+            else {
+                isSixth = false;
+            }
+        }
+    }
+
+    function isSixthEntries(uint week) internal view returns(bool isSixth) {
+        for (uint i = 6; i < 11; i++) {
+            if(entryLeaderBoard[week][i].user == msg.sender) {
+                isSixth = true;
+            }
+            else {
+                isSixth = false;
+            }
+        }
+    }
+
+    function isTenthEntries(uint week) internal view returns(bool isSixth) {
+        for (uint i = 11; i < 21; i++) {
+            if(entryLeaderBoard[week][i].user == msg.sender) {
+                isSixth = true;
+            }
+            else {
+                isSixth = false;
+            }
+        }
+    }
+
+        function isSixthHeadlines(uint week) internal view returns(bool isSixth) {
+        for (uint i = 6; i < 11; i++) {
+            if(headlineLeaderBoard[week][i].user == msg.sender) {
+                isSixth = true;
+            }
+            else {
+                isSixth = false;
+            }
+        }
+    }
+
+    function isTenthHeadlines(uint week) internal view returns(bool isSixth) {
+        for (uint i = 11; i < 21; i++) {
+            if(headlineLeaderBoard[week][i].user == msg.sender) {
+                isSixth = true;
+            }
+            else {
+                isSixth = false;
+            }
+        }
+    }
+}
+
+interface AggregatorV3Interface {
+  function decimals() external view returns (uint8);
+
+  function description() external view returns (string memory);
+
+  function version() external view returns (uint256);
+
+  function getRoundData(uint80 _roundId)
+    external
+    view
+    returns (
+      uint80 roundId,
+      int256 answer,
+      uint256 startedAt,
+      uint256 updatedAt,
+      uint80 answeredInRound
+    );
+
+  function latestRoundData()
+    external
+    view
+    returns (
+      uint80 roundId,
+      int256 answer,
+      uint256 startedAt,
+      uint256 updatedAt,
+      uint80 answeredInRound
+    );
 }

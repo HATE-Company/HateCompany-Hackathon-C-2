@@ -14,3 +14,4 @@ scripts/deploy.js
 contracts/Lock.sol
 contracts/leaderboard.sol
 contracts/leaderboard2.sol
+algos.txt
